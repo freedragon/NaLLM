@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fewshot_examples import get_fewshot_examples
-from llm.openai import OpenAIChat
+from llm.openai import OpenAIChat, AzureOpenAIChat
 from pydantic import BaseModel
 
 
@@ -50,6 +50,8 @@ neo4j_connection = Neo4jDatabase(
 
 # Initialize LLM modules
 openai_api_key = os.environ.get("OPENAI_API_KEY", None)
+azure_openai_api_key = os.environ.get("AZURE_OPENAI_API_KEY", None)
+azure_openai_api_endpoint = os.environ.get("AZURE_OPENAI_API_ENDPOINT", None)
 
 
 # Define FastAPI endpoint
@@ -75,16 +77,23 @@ async def questionProposalsForCurrentDb(payload: questionProposalPayload):
             status_code=422,
             detail="Please set OPENAI_API_KEY environment variable or send it as api_key in the request body",
         )
-    api_key = openai_api_key if openai_api_key else payload.api_key
+    # api_key = openai_api_key if openai_api_key else payload.api_key
+    # llm = openai_api_key if openai_api_key else payload.api_key
+    # llm = OpenAIChat(
+    #        openai_api_key=api_key,
+    #        model_name="gpt-3.5-turbo-0613",
+    #        max_tokens=512,
+    #        temperature=0.8) if openai_api_key
+    llm = AzureOpenAIChat(
+              azure_openai_api_key=azure_openai_api_key,
+              azure_openai_api_endpoint=azure_openai_api_endpoint,
+              model_name="gpt-4o",
+              max_tokens=512,
+              temperature=0.8)
 
     questionProposalGenerator = QuestionProposalGenerator(
         database=neo4j_connection,
-        llm=OpenAIChat(
-            openai_api_key=api_key,
-            model_name="gpt-3.5-turbo-0613",
-            max_tokens=512,
-            temperature=0.8,
-        ),
+        llm=llm
     )
 
     return questionProposalGenerator.run()
@@ -126,19 +135,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     status_code=422,
                     detail="Please set OPENAI_API_KEY environment variable or send it as api_key in the request body",
                 )
-            api_key = openai_api_key if openai_api_key else data.get("api_key")
+            # api_key = openai_api_key if openai_api_key else data.get("api_key")
+            azure_openai_api_key = os.environ.get("AZURE_OPENAI_API_KEY", None)
+            azure_openai_api_endpoint = os.environ.get("AZURE_OPENAI_API_ENDPOINT", None)
 
-            default_llm = OpenAIChat(
-                openai_api_key=api_key,
-                model_name=data.get("model_name", "gpt-3.5-turbo-0613"),
-            )
-            summarize_results = SummarizeCypherResult(
-                llm=OpenAIChat(
-                    openai_api_key=api_key,
-                    model_name="gpt-3.5-turbo-0613",
-                    max_tokens=128,
-                )
-            )
+            default_llm = AzureOpenAIChat(
+                      azure_openai_api_key=azure_openai_api_key,
+                      azure_openai_api_endpoint=azure_openai_api_endpoint,
+                      model_name=data.get("model_name", "gpt-4o"),
+                      max_tokens=512,
+                      temperature=0.8)
+            llm = AzureOpenAIChat(
+                      azure_openai_api_key=azure_openai_api_key,
+                      azure_openai_api_endpoint=azure_openai_api_endpoint,
+                      model_name="gpt-4o",
+                      max_tokens=128)
+
+            # default_llm = OpenAIChat(
+            #     openai_api_key=api_key,
+            #     model_name=data.get("model_name", "gpt-3.5-turbo-0613"),
+            # )
+            summarize_results = SummarizeCypherResult( llm )
 
             text2cypher = Text2Cypher(
                 database=neo4j_connection,
@@ -195,19 +212,24 @@ async def root(payload: ImportPayload):
     """
     Takes an input and created a Cypher query
     """
-    if not openai_api_key and not payload.api_key:
+    if not azure_openai_api_key and not payload.azure_openai_api_key:
         raise HTTPException(
             status_code=422,
             detail="Please set OPENAI_API_KEY environment variable or send it as api_key in the request body",
         )
-    api_key = openai_api_key if openai_api_key else payload.api_key
+    # api_key = openai_api_key if openai_api_key else payload.api_key
 
     try:
         result = ""
 
-        llm = OpenAIChat(
-            openai_api_key=api_key, model_name="gpt-3.5-turbo-16k", max_tokens=4000
-        )
+        # llm = OpenAIChat(
+        #     openai_api_key=api_key, model_name="gpt-3.5-turbo-16k", max_tokens=4000
+        # )
+        llm = AzureOpenAIChat(
+                  azure_openai_api_key=azure_openai_api_key,
+                  azure_openai_api_endpoint=azure_openai_api_endpoint,
+                  model_name="gpt-4o",
+                  max_tokens=4000)
 
         if not payload.neo4j_schema:
             extractor = DataExtractor(llm=llm)
@@ -246,11 +268,16 @@ async def companyInformation(payload: companyReportPayload):
         )
     api_key = openai_api_key if openai_api_key else payload.api_key
 
-    llm = OpenAIChat(
-        openai_api_key=api_key,
-        model_name="gpt-3.5-turbo-16k-0613",
-        max_tokens=512,
-    )
+    # llm = OpenAIChat(
+    #     openai_api_key=api_key,
+    #     model_name="gpt-3.5-turbo-16k-0613",
+    #     max_tokens=512,
+    # )
+    llm = AzureOpenAIChat(
+              azure_openai_api_key=azure_openai_api_key,
+              azure_openai_api_endpoint=azure_openai_api_endpoint,
+              model_name="gpt-4o",
+              max_tokens=512)
     print("Running company report for " + payload.company)
     company_report = CompanyReport(neo4j_connection, payload.company, llm)
     result = company_report.run()
